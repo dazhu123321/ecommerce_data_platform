@@ -1,0 +1,4 @@
+﻿google-cloud-bigquery
+pandas
+python-dotenv
+snowflake-connector-python[pandas]
