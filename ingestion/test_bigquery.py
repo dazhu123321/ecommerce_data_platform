@@ -21,3 +21,5 @@ for row in results:
     print(dict(row))
 
 print("BigQuery connection successful!")
+
+print("BigQuery connection successful!")
