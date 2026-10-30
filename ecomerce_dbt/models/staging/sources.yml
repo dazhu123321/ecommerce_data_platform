@@ -1,0 +1,25 @@
+version: 2
+
+sources:
+  - name: thelook
+    description: "Raw ecommerce data from Snowflake"
+
+    database: ECOM_RAW
+    schema: THELOOK
+
+    tables:
+      - name: users
+        identifier: USERS
+        description: "Customer information"
+
+      - name: products
+        identifier: PRODUCTS
+        description: "Product catalog"
+
+      - name: orders
+        identifier: ORDERS
+        description: "Customer order records"
+
+      - name: order_items
+        identifier: ORDER_ITEMS
+        description: "Individual items within customer orders"
