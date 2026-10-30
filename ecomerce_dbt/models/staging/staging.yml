@@ -1,0 +1,73 @@
+
+version: 2
+
+models:
+
+  - name: stg_users
+    description: "Standardized customer data"
+    columns:
+      - name: USER_ID
+        description: "Unique customer identifier"
+        data_tests:
+          - unique
+          - not_null
+
+  - name: stg_products
+    description: "Standardized product catalog"
+    columns:
+      - name: PRODUCT_ID
+        description: "Unique product identifier"
+        data_tests:
+          - unique
+          - not_null
+
+  - name: stg_orders
+    description: "Standardized order records"
+    columns:
+      - name: ORDER_ID
+        description: "Unique order identifier"
+        data_tests:
+          - unique
+          - not_null
+
+      - name: USER_ID
+        description: "Customer who placed the order"
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_users')
+                field: USER_ID
+
+  - name: stg_order_items
+    description: "Standardized order item records"
+    columns:
+      - name: ORDER_ITEM_ID
+        description: "Unique order item identifier"
+        data_tests:
+          - unique
+          - not_null
+
+      - name: ORDER_ID
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_orders')
+                field: ORDER_ID
+
+      - name: USER_ID
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_users')
+                field: USER_ID
+
+      - name: PRODUCT_ID
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_products')
+                field: PRODUCT_ID
