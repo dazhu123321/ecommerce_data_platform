@@ -1,0 +1,106 @@
+
+version: 2
+
+models:
+
+  # -------------------------
+  # Dimension Tables
+  # -------------------------
+
+  - name: dim_users
+    description: "Customer dimension table"
+    columns:
+      - name: USER_ID
+        data_tests:
+          - unique
+          - not_null
+
+  - name: dim_products
+    description: "Product dimension table"
+    columns:
+      - name: PRODUCT_ID
+        data_tests:
+          - unique
+          - not_null
+
+  - name: dim_date
+    description: "Calendar date dimension table"
+    columns:
+      - name: DATE_KEY
+        data_tests:
+          - unique
+          - not_null
+
+  # -------------------------
+  # Fact Tables
+  # -------------------------
+
+  - name: fct_order_items
+    description: >
+      Transaction-level fact table.
+      One row represents one order item.
+
+    columns:
+      - name: ORDER_ITEM_ID
+        data_tests:
+          - unique
+          - not_null
+
+      - name: ORDER_ID
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_orders')
+                field: ORDER_ID
+
+      - name: USER_ID
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_users')
+                field: USER_ID
+
+      - name: PRODUCT_ID
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_products')
+                field: PRODUCT_ID
+
+      - name: ORDER_DATE_KEY
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: DATE_KEY
+
+  - name: fct_orders
+    description: >
+      Order-level fact table.
+      One row represents one order.
+
+    columns:
+      - name: ORDER_ID
+        data_tests:
+          - unique
+          - not_null
+
+      - name: USER_ID
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_users')
+                field: USER_ID
+
+      - name: ORDER_DATE_KEY
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: DATE_KEY
