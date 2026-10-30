@@ -1,0 +1,93 @@
+
+name: E-commerce Data Platform CI
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+
+  python-check:
+    name: Python Ingestion Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check Python Syntax
+        run: |
+          python -m compileall -q ingestion
+
+  dbt-check:
+    name: dbt Project Check
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ecomerce_dbt
+
+    env:
+      DBT_PROFILES_DIR: ${{ runner.temp }}/dbt_profiles
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-dbt.txt
+
+      - name: Install dbt Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ../requirements-dbt.txt
+
+      - name: Create Temporary dbt Profile
+        run: |
+          mkdir -p "$DBT_PROFILES_DIR"
+
+          cat > "$DBT_PROFILES_DIR/profiles.yml" <<'YAML'
+          ecomerce_dbt:
+            target: ci
+            outputs:
+              ci:
+                type: snowflake
+                account: ci-placeholder
+                user: ci-placeholder
+                password: not-used
+                role: ECOM_LOADER
+                database: ECOM_RAW
+                warehouse: ECOM_WH
+                schema: ANALYTICS
+                threads: 4
+          YAML
+
+      - name: Parse dbt Project
+        run: |
+          dbt parse --no-partial-parse
