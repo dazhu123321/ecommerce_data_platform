@@ -1,0 +1,54 @@
+
+SELECT
+
+    -- 1. Order Item Information
+    oi.ORDER_ITEM_ID,
+    oi.ORDER_ID,
+    oi.USER_ID,
+    oi.PRODUCT_ID,
+    oi.INVENTORY_ITEM_ID,
+    oi.STATUS AS ITEM_STATUS,
+    oi.CREATED_AT AS ITEM_CREATED_AT,
+    oi.SHIPPED_AT AS ITEM_SHIPPED_AT,
+    oi.DELIVERED_AT AS ITEM_DELIVERED_AT,
+    oi.RETURNED_AT AS ITEM_RETURNED_AT,
+    oi.SALE_PRICE,
+
+    -- 2. Order Information
+    o.STATUS AS ORDER_STATUS,
+    o.GENDER AS ORDER_GENDER,
+    o.CREATED_AT AS ORDER_CREATED_AT,
+    o.RETURNED_AT AS ORDER_RETURNED_AT,
+    o.SHIPPED_AT AS ORDER_SHIPPED_AT,
+    o.DELIVERED_AT AS ORDER_DELIVERED_AT,
+    o.NUM_OF_ITEM,
+
+    -- 3. User Information
+    u.FIRST_NAME,
+    u.LAST_NAME,
+    u.EMAIL,
+    u.AGE,
+    u.GENDER AS USER_GENDER,
+    u.STATE AS USER_STATE,
+    u.CITY AS USER_CITY,
+    u.COUNTRY AS USER_COUNTRY,
+    u.TRAFFIC_SOURCE,
+
+    -- 4. Product Information
+    p.NAME AS PRODUCT_NAME,
+    p.CATEGORY AS PRODUCT_CATEGORY,
+    p.BRAND AS PRODUCT_BRAND,
+    p.DEPARTMENT AS PRODUCT_DEPARTMENT,
+    p.COST AS PRODUCT_COST,
+    p.RETAIL_PRICE AS PRODUCT_RETAIL_PRICE
+
+FROM {{ ref('stg_order_items') }} oi
+
+LEFT JOIN {{ ref('stg_orders') }} o
+    ON oi.ORDER_ID = o.ORDER_ID
+
+LEFT JOIN {{ ref('stg_users') }} u
+    ON oi.USER_ID = u.USER_ID
+
+LEFT JOIN {{ ref('stg_products') }} p
+    ON oi.PRODUCT_ID = p.PRODUCT_ID

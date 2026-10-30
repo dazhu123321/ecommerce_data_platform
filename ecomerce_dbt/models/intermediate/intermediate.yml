@@ -1,0 +1,40 @@
+
+version: 2
+
+models:
+  - name: int_order_items_enriched
+    description: >
+      Enriched order item records combining
+      order, user, and product information.
+      One row represents one order item.
+
+    columns:
+      - name: ORDER_ITEM_ID
+        description: Unique order item identifier.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: ORDER_ID
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_orders')
+                field: ORDER_ID
+
+      - name: USER_ID
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_users')
+                field: USER_ID
+
+      - name: PRODUCT_ID
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_products')
+                field: PRODUCT_ID
