@@ -1,0 +1,72 @@
+
+name: Snowflake dbt Connection Check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snowflake-connection:
+    name: Verify Snowflake CI Connection
+    runs-on: ubuntu-24.04
+
+    env:
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_CI_ACCOUNT }}
+      SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_CI_PRIVATE_KEY }}
+      SNOWFLAKE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_CI_KEY_PASSPHRASE }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dbt
+        run: |
+          python -m pip install -r requirements-dbt.txt
+
+      - name: Create temporary dbt credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROFILE_DIR="$RUNNER_TEMP/dbt_profiles"
+          KEY_FILE="$RUNNER_TEMP/snowflake_ci_key.p8"
+
+          mkdir -p "$PROFILE_DIR"
+
+          umask 077
+          printf '%s\n' "$SNOWFLAKE_PRIVATE_KEY" > "$KEY_FILE"
+
+          echo "DBT_PROFILES_DIR=$PROFILE_DIR" >> "$GITHUB_ENV"
+
+          cat > "$PROFILE_DIR/profiles.yml" <<YAML
+          ecomerce_dbt:
+            target: ci
+            outputs:
+              ci:
+                type: snowflake
+                account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+                user: ECOM_CI_USER
+                role: ECOM_CI
+                private_key_path: "$KEY_FILE"
+                private_key_passphrase: "{{ env_var('SNOWFLAKE_KEY_PASSPHRASE') }}"
+                warehouse: ECOM_WH
+                database: ECOM_RAW
+                schema: ANALYTICS_CI
+                threads: 4
+          YAML
+
+          unset SNOWFLAKE_PRIVATE_KEY
+
+      - name: Test Snowflake connection
+        working-directory: ecomerce_dbt
+        run: |
+          dbt debug --target ci
