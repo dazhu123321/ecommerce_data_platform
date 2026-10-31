@@ -1,39 +1,71 @@
 
-name: Snowflake dbt Connection Check
+name: Snowflake dbt Integration CI
 
 on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# 同一个 PR 的新运行会取消旧运行
+concurrency:
+  group: snowflake-dbt-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  snowflake-connection:
-    name: Verify Snowflake CI Connection
+  snowflake-dbt-ci:
+    name: Snowflake dbt Integration Check
+
+    # 不允许 Fork PR 使用 Snowflake Secrets
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
 
     env:
-      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_CI_ACCOUNT }}
-      SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_CI_PRIVATE_KEY }}
-      SNOWFLAKE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_CI_KEY_PASSPHRASE }}
+      # 每个 PR 使用独立 Schema
+      # 手动运行仍使用原来的 ANALYTICS_CI
+      DBT_CI_SCHEMA: ${{ github.event_name == 'pull_request' && format('ANALYTICS_CI_PR_{0}', github.event.pull_request.number) || 'ANALYTICS_CI' }}
 
     steps:
+      # 1. 获取代码
       - name: Checkout Repository
         uses: actions/checkout@v6
         with:
           persist-credentials: false
 
+      # 2. 安装 Python
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-dbt.txt
 
+      # 3. 安装 dbt
       - name: Install dbt
         run: |
+          python -m pip install --upgrade pip
           python -m pip install -r requirements-dbt.txt
 
+      # 4. 创建临时 dbt Profile 和 RSA 私钥
       - name: Create temporary dbt credentials
         shell: bash
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_CI_ACCOUNT }}
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_CI_PRIVATE_KEY }}
+          SNOWFLAKE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_CI_KEY_PASSPHRASE }}
         run: |
           set -euo pipefail
 
@@ -46,6 +78,8 @@ jobs:
           printf '%s\n' "$SNOWFLAKE_PRIVATE_KEY" > "$KEY_FILE"
 
           echo "DBT_PROFILES_DIR=$PROFILE_DIR" >> "$GITHUB_ENV"
+          echo "SNOWFLAKE_ACCOUNT=$SNOWFLAKE_ACCOUNT" >> "$GITHUB_ENV"
+          echo "SNOWFLAKE_KEY_PASSPHRASE=$SNOWFLAKE_KEY_PASSPHRASE" >> "$GITHUB_ENV"
 
           cat > "$PROFILE_DIR/profiles.yml" <<YAML
           ecomerce_dbt:
@@ -60,25 +94,26 @@ jobs:
                 private_key_passphrase: "{{ env_var('SNOWFLAKE_KEY_PASSPHRASE') }}"
                 warehouse: ECOM_WH
                 database: ECOM_RAW
-                schema: ANALYTICS_CI
+                schema: "{{ env_var('DBT_CI_SCHEMA') }}"
                 threads: 4
           YAML
 
           unset SNOWFLAKE_PRIVATE_KEY
 
-      - name: Test Snowflake connection
+      # 5. 验证数据库连接
+      - name: Test Snowflake Connection
         working-directory: ecomerce_dbt
         run: |
           dbt debug --target ci
 
-          
+      # 6. 查看将要执行的 dbt 模型
       - name: Preview dbt Resources
         working-directory: ecomerce_dbt
         run: |
           dbt ls --target ci
 
+      # 7. 构建模型并运行数据质量测试
       - name: Build dbt Models and Run Data Tests
         working-directory: ecomerce_dbt
         run: |
           dbt build --target ci
-
