@@ -70,3 +70,15 @@ jobs:
         working-directory: ecomerce_dbt
         run: |
           dbt debug --target ci
+
+          
+      - name: Preview dbt Resources
+        working-directory: ecomerce_dbt
+        run: |
+          dbt ls --target ci
+
+      - name: Build dbt Models and Run Data Tests
+        working-directory: ecomerce_dbt
+        run: |
+          dbt build --target ci
+
