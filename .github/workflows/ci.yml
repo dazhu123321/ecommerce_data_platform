@@ -43,6 +43,10 @@ jobs:
           python -m compileall -q ingestion
           echo "Python syntax check passed."
 
+      - name: Run Python Unit Tests
+        run: |
+          python -m pytest tests/ -v
+
   # ========================================
   # Job 2: dbt Project CI
   # ========================================
