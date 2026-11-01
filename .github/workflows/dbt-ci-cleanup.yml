@@ -11,16 +11,20 @@ on:
 permissions:
   contents: read
 
-jobs:
-  preview-cleanup:
-    name: Preview PR Schema Cleanup
+# 与 dbt Integration CI 使用同一并发组
+# 避免同一个 PR 的构建与清理同时进行
+concurrency:
+  group: snowflake-dbt-ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
 
-    # 只处理本仓库内部的 PR
+jobs:
+  cleanup-schema:
+    name: Cleanup PR Snowflake Schema
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository
 
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Set up Python
@@ -32,7 +36,7 @@ jobs:
         run: |
           python -m pip install "snowflake-connector-python>=4,<6"
 
-      - name: Preview Snowflake Schema
+      - name: Drop PR CI Schema Safely
         shell: bash
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -48,21 +52,32 @@ jobs:
 
           import snowflake.connector
 
-          pr_number = int(os.environ["PR_NUMBER"])
-          if pr_number <= 0:
+          # 1. 验证 PR 编号
+          raw_number = os.environ["PR_NUMBER"]
+
+          if not re.fullmatch(r"[1-9][0-9]*", raw_number):
               raise ValueError("Invalid PR number")
 
+          pr_number = int(raw_number)
           schema = f"ANALYTICS_CI_PR_{pr_number}"
+          database = "ECOM_RAW"
 
-          if not re.fullmatch(r"ANALYTICS_CI_PR_[0-9]+", schema):
+          # 2. 严格限制目标 Schema
+          if not re.fullmatch(
+              r"ANALYTICS_CI_PR_[1-9][0-9]*",
+              schema,
+          ):
               raise ValueError("Unsafe schema name")
 
-          print(f"PR number: {pr_number}")
-          print(f"Target schema: ECOM_RAW.{schema}")
-          print("Mode: PREVIEW ONLY")
+          full_name = f"{database}.{schema}"
 
+          print(f"PR: #{pr_number}")
+          print(f"Cleanup target: {full_name}")
+
+          # 3. 使用临时私钥连接 Snowflake
           with tempfile.TemporaryDirectory() as temp_dir:
               key_file = Path(temp_dir) / "ci_key.p8"
+
               key_file.write_text(
                   os.environ["SNOWFLAKE_PRIVATE_KEY"],
                   encoding="utf-8",
@@ -79,29 +94,64 @@ jobs:
                       "SNOWFLAKE_KEY_PASSPHRASE"
                   ],
                   warehouse="ECOM_WH",
-                  database="ECOM_RAW",
+                  database=database,
                   schema="INFORMATION_SCHEMA",
               )
 
               try:
                   with conn.cursor() as cursor:
+
+                      # 4. 检查 Schema 是否存在及所有权
                       cursor.execute(
                           """
-                          SELECT SCHEMA_NAME
+                          SELECT SCHEMA_OWNER
                           FROM ECOM_RAW.INFORMATION_SCHEMA.SCHEMATA
-                          WHERE SCHEMA_NAME = %s
+                          WHERE CATALOG_NAME = %s
+                            AND SCHEMA_NAME = %s
                           """,
-                          (schema,),
+                          (database, schema),
                       )
+
                       result = cursor.fetchone()
 
-                      if result:
-                          print(f"FOUND: ECOM_RAW.{schema}")
+                      if result is None:
+                          print("Schema not found. Nothing to delete.")
                       else:
-                          print(f"NOT FOUND: ECOM_RAW.{schema}")
+                          owner = result[0]
 
-                  print("No schema was deleted.")
+                          if owner != "ECOM_CI":
+                              raise PermissionError(
+                                  f"Unexpected schema owner: {owner}"
+                              )
+
+                          print("Owner verified: ECOM_CI")
+
+                          # 5. 删除 PR 专属测试 Schema
+                          cursor.execute(
+                              f"DROP SCHEMA {full_name} CASCADE"
+                          )
+
+                          print(f"Dropped: {full_name}")
+
+                          # 6. 删除后再次查询
+                          cursor.execute(
+                              """
+                              SELECT SCHEMA_NAME
+                              FROM ECOM_RAW.INFORMATION_SCHEMA.SCHEMATA
+                              WHERE CATALOG_NAME = %s
+                                AND SCHEMA_NAME = %s
+                              """,
+                              (database, schema),
+                          )
+
+                          if cursor.fetchone() is not None:
+                              raise RuntimeError(
+                                  "Schema still exists after cleanup"
+                              )
+
+                          print("Cleanup verification passed.")
 
               finally:
                   conn.close()
+
           PY
