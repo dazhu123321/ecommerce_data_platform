@@ -1,0 +1,94 @@
+
+name: dbt Production Deployment
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dbt-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  production-connection-check:
+    name: Production Connection Check
+
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    environment:
+      name: production
+      deployment: false
+
+    env:
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_DEPLOY_ACCOUNT }}
+      SNOWFLAKE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_DEPLOY_KEY_PASSPHRASE }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-dbt.txt
+
+      - name: Install dbt
+        run: |
+          python -m pip install -r requirements-dbt.txt
+
+      - name: Create Temporary Production Profile
+        shell: bash
+        env:
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_DEPLOY_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          PROFILE_DIR="$RUNNER_TEMP/dbt_prod_profiles"
+          KEY_FILE="$RUNNER_TEMP/snowflake_deploy_key.p8"
+
+          mkdir -p "$PROFILE_DIR"
+          umask 077
+
+          printf '%s\n' "$SNOWFLAKE_PRIVATE_KEY" > "$KEY_FILE"
+
+          echo "DBT_PROFILES_DIR=$PROFILE_DIR" >> "$GITHUB_ENV"
+          echo "DBT_DEPLOY_KEY_FILE=$KEY_FILE" >> "$GITHUB_ENV"
+
+          cat > "$PROFILE_DIR/profiles.yml" <<'YAML'
+          ecomerce_dbt:
+            target: prod
+            outputs:
+              prod:
+                type: snowflake
+                account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+                user: ECOM_DEPLOY_USER
+                role: ECOM_DEPLOY
+                private_key_path: "{{ env_var('DBT_DEPLOY_KEY_FILE') }}"
+                private_key_passphrase: "{{ env_var('SNOWFLAKE_KEY_PASSPHRASE') }}"
+                warehouse: ECOM_WH
+                database: ECOM_RAW
+                schema: ANALYTICS
+                threads: 4
+          YAML
+
+      - name: Test Production Connection
+        working-directory: ecomerce_dbt
+        run: dbt debug --target prod
+
+      - name: Preview Production Models
+        working-directory: ecomerce_dbt
+        run: dbt ls --target prod
+
+      - name: Remove Temporary Credentials
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/snowflake_deploy_key.p8"
+          rm -rf "$RUNNER_TEMP/dbt_prod_profiles"
