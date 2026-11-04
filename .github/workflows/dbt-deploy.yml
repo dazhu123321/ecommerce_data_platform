@@ -12,16 +12,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  production-connection-check:
-    name: Production Connection Check
+  production-deployment:
+    name: Production dbt Build
 
     if: github.ref == 'refs/heads/main'
+
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     environment:
       name: production
-      deployment: false
+      deployment: true
 
     env:
       SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_DEPLOY_ACCOUNT }}
@@ -42,6 +43,7 @@ jobs:
 
       - name: Install dbt
         run: |
+          python -m pip install --upgrade pip
           python -m pip install -r requirements-dbt.txt
 
       - name: Create Temporary Production Profile
@@ -50,6 +52,7 @@ jobs:
           SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_DEPLOY_PRIVATE_KEY }}
         run: |
           set -euo pipefail
+
           PROFILE_DIR="$RUNNER_TEMP/dbt_prod_profiles"
           KEY_FILE="$RUNNER_TEMP/snowflake_deploy_key.p8"
 
@@ -78,13 +81,20 @@ jobs:
                 threads: 4
           YAML
 
-      - name: Test Production Connection
+      - name: Verify Production Connection
         working-directory: ecomerce_dbt
-        run: dbt debug --target prod
+        run: |
+          dbt debug --target prod
 
       - name: Preview Production Models
         working-directory: ecomerce_dbt
-        run: dbt ls --target prod
+        run: |
+          dbt ls --target prod
+
+      - name: Build Production Models and Run Data Tests
+        working-directory: ecomerce_dbt
+        run: |
+          dbt build --target prod
 
       - name: Remove Temporary Credentials
         if: always()
