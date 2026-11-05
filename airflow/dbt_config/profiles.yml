@@ -1,0 +1,28 @@
+
+ecomerce_dbt:
+  target: dev
+
+  outputs:
+    dev:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      authenticator: programmatic_access_token
+      token: "{{ env_var('SNOWFLAKE_TOKEN') }}"
+      role: ECOM_LOADER
+      warehouse: ECOM_WH
+      database: ECOM_RAW
+      schema: ANALYTICS_DEV
+      threads: 4
+
+    prod:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      authenticator: programmatic_access_token
+      token: "{{ env_var('SNOWFLAKE_TOKEN') }}"
+      role: ECOM_LOADER
+      warehouse: ECOM_WH
+      database: ECOM_RAW
+      schema: ANALYTICS
+      threads: 4

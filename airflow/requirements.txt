@@ -1,0 +1,7 @@
+
+dbt-snowflake==1.12.4
+google-cloud-bigquery
+snowflake-connector-python
+python-dotenv
+pandas
+pyarrow
